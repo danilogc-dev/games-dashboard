@@ -1,0 +1,893 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Backlog de Jogos</title>
+<meta name="description" content="Fila de jogos por plataforma, com tempos do HowLongToBeat, notas do Metacritic e histórico de zerados.">
+<meta name="theme-color" content="#10131a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oxanium:wght@500;700;800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: painel de controle de uma estante de jogos — placar no topo, "jogando agora" + horas por plataforma, depois a fila completa em linhas escaneáveis */
+:root {
+  --bg: #e9ecf2;
+  --surface: #ffffff;
+  --surface-2: #f3f5f9;
+  --line: #d6dbe5;
+  --fg: #151923;
+  --muted: #5c6577;
+  --accent: #d98a06;
+  --accent-ink: #1b1300;
+  --pc: #5a36b8;
+  --ps5: #2563d4;
+  --switch: #e4000f;
+  --other: #5f6b7d;
+  --emu: #0b8582;
+  --mc-good: #66cc33; --mc-mid: #ffcc33; --mc-bad: #ff4d4d; --mc-ink: #10140c;
+  --ok: #1f8a54;
+  --play: #d98a06;
+  --track: #e2e6ee;
+  --danger: #c43a2b;
+  --f-display: "Oxanium", "Trebuchet MS", system-ui, sans-serif;
+  --f-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10131a; --surface: #171b24; --surface-2: #1d2230; --line: #2a3142;
+    --fg: #e8ebf2; --muted: #9099ad; --accent: #f2a628; --accent-ink: #1b1300;
+    --pc: #8462e6; --ps5: #5b8ff0; --switch: #ff2d2d; --other: #8d9ab3; --emu: #2ec4be;
+    --ok: #4cc386; --play: #f2a628; --track: #262c3a; --danger: #f06a5a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10131a; --surface: #171b24; --surface-2: #1d2230; --line: #2a3142;
+  --fg: #e8ebf2; --muted: #9099ad; --accent: #f2a628; --accent-ink: #1b1300;
+  --pc: #8462e6; --ps5: #5b8ff0; --switch: #ff2d2d; --other: #8d9ab3; --emu: #2ec4be;
+  --ok: #4cc386; --play: #f2a628; --track: #262c3a; --danger: #f06a5a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 64px; display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--f-display); margin: 0; text-wrap: balance; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.label { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; }
+.top h1 { font-size: clamp(28px, 5vw, 42px); font-weight: 800; letter-spacing: -.01em; line-height: 1.05; }
+.top h1 span { color: var(--accent); }
+.top p { margin: 6px 0 0; color: var(--muted); max-width: 52ch; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* placar */
+.score { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.score > div { background: var(--surface); padding: 16px 18px; display: grid; gap: 2px; }
+.score .big { font-family: var(--f-display); font-size: 34px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.score .big small { font-size: 16px; color: var(--muted); font-weight: 500; margin-left: 2px; }
+.score .sub { font-size: 13px; color: var(--muted); }
+.score .hot .big { color: var(--accent); }
+
+/* duas colunas */
+.split { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.panel h2 { font-size: 17px; font-weight: 700; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.panel h2 .label { font-family: var(--f-body); }
+
+.now { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.now-card { border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 12px; display: grid; gap: 8px; min-width: 0; }
+.now-card h3 { font-family: var(--f-body); font-size: 14px; font-weight: 600; line-height: 1.3; }
+.now-card { padding: 8px 8px 12px; }
+.now-card h3, .now-card .meta { padding-inline: 4px; }
+.cover { position: relative; aspect-ratio: 3 / 4; max-width: 100%; border-radius: 7px; overflow: hidden; background: var(--track); }
+.cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.cover .chip { position: absolute; top: 8px; left: 8px; width: auto; padding: 3px 7px; box-shadow: 0 1px 4px rgba(0, 0, 0, .35); z-index: 1; }
+.cover-ph { position: absolute; inset: 0; display: grid; place-items: center; background: linear-gradient(160deg, color-mix(in srgb, var(--pc) 34%, var(--surface)) 0%, color-mix(in srgb, var(--pc) 10%, var(--surface)) 100%); }
+.cover-initial { font-family: var(--f-display); font-size: 56px; font-weight: 800; color: color-mix(in srgb, var(--pc) 70%, var(--fg)); opacity: .55; }
+.cover-msg { font-size: 13px; color: var(--fg); font-weight: 600; }
+.cover-add { border: 1px dashed color-mix(in srgb, var(--fg) 35%, transparent); background: color-mix(in srgb, var(--surface) 70%, transparent); color: var(--fg); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.cover-add:hover { border-style: solid; border-color: var(--accent); }
+.cover-add svg { width: 14px; height: 14px; }
+.cover-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; z-index: 1; opacity: 0; transition: opacity .15s; }
+.cover:hover .cover-tools, .cover:focus-within .cover-tools, .cover-tools.confirm-cover { opacity: 1; }
+@media (hover: none) { .cover-tools { opacity: 1; } }
+.cover-tools button { border: 0; border-radius: 6px; width: 28px; height: 28px; display: grid; place-items: center; background: rgba(12, 14, 20, .72); color: #fff; }
+.cover-tools button:hover { background: rgba(12, 14, 20, .9); }
+.cover-tools svg { width: 15px; height: 15px; }
+.cover-tools.confirm-cover { left: 6px; align-items: center; justify-content: flex-end; background: rgba(12, 14, 20, .82); color: #fff; border-radius: 7px; padding: 4px 4px 4px 8px; font-size: 12px; font-weight: 600; }
+.cover-tools.confirm-cover span { margin-right: auto; }
+.cover-tools.confirm-cover button { width: auto; padding: 0 8px; font-size: 12px; font-weight: 600; background: rgba(255, 255, 255, .14); }
+.now-card .meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.now-card .act { display: flex; gap: 6px; }
+.mini { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 3px 8px; font-size: 12px; font-weight: 600; }
+.mini:hover { border-color: var(--muted); }
+
+.plat-panel { display: flex; flex-direction: column; gap: 16px; }
+.pie-wrap { flex: 1; display: grid; place-items: center; min-height: 0; padding-block: 4px; }
+.pie { width: min(100%, 250px); height: auto; aspect-ratio: 1; overflow: visible; display: block; }
+.pie path { stroke: var(--surface); stroke-width: 2; stroke-linejoin: round; transition: opacity .15s; }
+.pie path:hover { opacity: .85; }
+.pie .pct { font-family: var(--f-mono); font-size: 12px; font-weight: 600; fill: #fff; paint-order: stroke; stroke: rgba(0, 0, 0, .25); stroke-width: 2px; }
+.pie .ctr-n { font-family: var(--f-display); font-size: 30px; font-weight: 700; fill: var(--fg); }
+.pie .ctr-l { font-family: var(--f-body); font-size: 11px; font-weight: 600; letter-spacing: .08em; fill: var(--muted); }
+.plat-legend div span:first-of-type { min-width: 0; }
+.plat-legend .pc-share { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.plat-legend { display: grid; gap: 8px; }
+.plat-legend div { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto 4ch; gap: 10px; align-items: center; font-size: 14px; }
+.plat-legend i { width: 12px; height: 12px; border-radius: 3px; display: block; }
+.plat-legend .num { color: var(--muted); font-size: 13px; }
+.plat-legend b { font-family: var(--f-mono); font-weight: 600; font-size: 13px; min-width: 5ch; text-align: right; }
+.plat-legend .pc-share { text-align: right; }
+.tip { font-size: 13px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 12px; }
+.tip strong { color: var(--fg); font-weight: 600; }
+
+/* toolbar */
+.lib { display: grid; gap: 12px; }
+.lib-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.lib-head h2 { font-size: 22px; font-weight: 700; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: none; padding: 6px 11px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.search { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 11px; font-size: 14px; width: 200px; max-width: 100%; }
+select.search { width: auto; }
+
+/* lista */
+.rows { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.mc { font-family: var(--f-mono); font-size: 12px; font-weight: 700; width: 30px; height: 26px; border-radius: 5px; display: inline-grid; place-items: center; color: var(--mc-ink); font-variant-numeric: tabular-nums; }
+.mc.good { background: var(--mc-good); }
+.mc.mid { background: var(--mc-mid); }
+.mc.bad { background: var(--mc-bad); color: #fff; }
+.mc.none { background: transparent; }
+.cover .mc { position: absolute; left: 8px; bottom: 8px; box-shadow: 0 1px 4px rgba(0, 0, 0, .35); z-index: 1; }
+.done-list li .mc { width: 26px; height: 20px; font-size: 11px; border-radius: 4px; }
+.row { display: grid; grid-template-columns: 60px 30px minmax(0, 1fr) minmax(120px, 220px) 104px 112px; gap: 14px; align-items: center; padding: 11px 16px; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.row:hover { background: var(--surface-2); }
+/* histórico */
+.hist { display: grid; gap: 12px; }
+.hist-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; }
+.hist-head h2 { font-size: 22px; font-weight: 700; }
+.years { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.ygrid { display: grid; grid-template-columns: 64px 104px minmax(0, 1fr) 18px; gap: 14px; align-items: center; }
+.months { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; }
+.months span { height: 26px; border-radius: 4px; display: grid; place-items: center; font-family: var(--f-mono); font-size: 11px; font-weight: 600; color: var(--fg); }
+.mhead { padding: 10px 16px 0; }
+.mhead .months span { height: auto; color: var(--muted); font-weight: 500; }
+.year { border-top: 1px solid var(--line); }
+.year:first-of-type { border-top: 0; }
+.year summary { list-style: none; cursor: pointer; padding: 10px 16px; }
+.year summary::-webkit-details-marker { display: none; }
+.year summary:hover { background: var(--surface-2); }
+.yr { font-family: var(--f-display); font-size: 22px; font-weight: 700; }
+.ycnt { font-size: 13px; color: var(--muted); line-height: 1.25; }
+.ycnt b { color: var(--fg); font-family: var(--f-mono); font-size: 15px; }
+.chev { width: 10px; height: 10px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); justify-self: center; }
+.year[open] .chev { transform: rotate(45deg); }
+.done-list { list-style: none; margin: 0; padding: 4px 16px 16px; columns: 2 280px; column-gap: 28px; }
+.done-list li { break-inside: avoid; display: grid; grid-template-columns: 44px 54px 26px minmax(0, 1fr); gap: 10px; align-items: center; padding: 5px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+.done-list li .num { color: var(--muted); font-size: 12px; }
+.done-list li .chip { font-size: 10px; }
+.done-list .mh { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; grid-template-columns: none; border: 0; border-bottom: 2px solid var(--ok); padding: 18px 0 4px; margin-bottom: 2px; break-after: avoid; break-inside: avoid; }
+.done-list .mh span { font-family: var(--f-display); font-size: 16px; font-weight: 700; color: var(--fg); letter-spacing: .01em; }
+.done-list .mh b { font-family: var(--f-mono); font-size: 12px; font-weight: 600; color: var(--ok); }
+.done-list .mh:first-child { padding-top: 6px; }
+.dname { border: 0; background: none; padding: 2px 0; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; width: 100%; border-radius: 4px; }
+.dname span { overflow-wrap: anywhere; }
+.dname svg { width: 14px; height: 14px; flex: none; color: var(--muted); opacity: .35; }
+.dname:hover span { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
+.dname:hover svg, .dname:focus-visible svg { opacity: 1; color: var(--accent); }
+.hist-hint { font-size: 13px; color: var(--muted); }
+.years-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.years-sum > div { background: var(--surface); padding: 14px 18px; display: grid; gap: 2px; align-content: start; }
+.years-sum .big { font-family: var(--f-display); font-size: 28px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--ok); }
+.years-sum .big small { font-size: 15px; color: var(--muted); font-weight: 500; margin-left: 3px; }
+.years-sum .sub { font-size: 13px; color: var(--muted); }
+@media (max-width: 640px) { .years-sum { grid-template-columns: minmax(0, 1fr); } }
+.chip { font-family: var(--f-mono); font-size: 11px; font-weight: 600; padding: 3px 0; border-radius: 4px; text-align: center; color: #fff; letter-spacing: .02em; }
+.name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; line-height: 1.3; }
+.name small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.hours { display: grid; grid-template-columns: minmax(0, 1fr) 4ch; gap: 8px; align-items: center; }
+.track { height: 8px; background: var(--track); border-radius: 4px; position: relative; overflow: hidden; }
+.track span { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--muted); }
+.track em { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--muted); opacity: .28; }
+.hours .num { text-align: right; font-size: 13px; }
+.status { border: 1px solid transparent; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; }
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.status.backlog { color: var(--muted); border-color: var(--line); background: transparent; }
+.status.jogando { color: var(--play); border-color: color-mix(in srgb, var(--play) 45%, transparent); background: color-mix(in srgb, var(--play) 12%, transparent); }
+.status.zerado { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.acts { display: flex; gap: 4px; justify-content: flex-end; }
+.ico { border: 1px solid transparent; background: none; border-radius: 6px; width: 30px; height: 30px; display: inline-grid; place-items: center; color: var(--muted); text-decoration: none; }
+.ico:hover { border-color: var(--line); color: var(--fg); background: var(--surface); }
+.ico svg { width: 16px; height: 16px; }
+.confirm { display: flex; gap: 4px; justify-content: flex-end; align-items: center; font-size: 12px; }
+.confirm .mini.del { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
+.empty { padding: 36px 20px; text-align: center; color: var(--muted); }
+.empty strong { display: block; color: var(--fg); font-family: var(--f-display); font-size: 18px; margin-bottom: 4px; }
+.legend-hint { font-size: 12px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+.legend-hint i { display: inline-block; width: 18px; height: 6px; border-radius: 3px; background: var(--muted); vertical-align: middle; margin-right: 6px; }
+.legend-hint i.ext { opacity: .28; }
+
+/* painel de cadastro */
+.scrim { position: fixed; inset: 0; background: rgba(8, 10, 16, .5); display: grid; place-items: center; padding: 16px; z-index: 20; }
+.sheet { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; width: min(520px, 100%); max-height: calc(100% - 32px); overflow: auto; padding: 22px; display: grid; gap: 16px; }
+.sheet h2 { font-size: 22px; font-weight: 700; }
+.field { display: grid; gap: 5px; min-width: 0; }
+.field label { font-size: 13px; font-weight: 600; }
+.field input, .field select { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 9px 11px; width: 100%; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.hltb { border: 1px dashed var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 8px; background: var(--surface-2); }
+.hltb-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.hltb p { margin: 0; font-size: 13px; color: var(--muted); }
+.hltb p.err { color: var(--danger); }
+.hltb a { color: var(--fg); font-weight: 600; font-size: 13px; }
+.sheet-foot { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.banner { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 14px; color: var(--muted); }
+
+@media (max-width: 860px) {
+  .score { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .split { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .wrap { padding-inline: 16px; }
+  .row { grid-template-columns: 58px minmax(0, 1fr) auto; grid-template-areas: "chip name acts" "mc hours status"; row-gap: 8px; }
+  .row .mc { grid-area: mc; }
+  .row .chip { grid-area: chip; align-self: start; margin-top: 2px; }
+  .row .name { grid-area: name; }
+  .row .hours { grid-area: hours; }
+  .row .stcell { grid-area: status; width: 104px; }
+  .row .acts, .row .confirm { grid-area: acts; }
+  .ygrid { grid-template-columns: auto minmax(0, 1fr) 18px; row-gap: 8px; }
+  .ygrid .months { grid-column: 1 / -1; grid-row: 2; }
+  .mhead { display: none; }
+  .search { width: 100%; }
+  .grid3 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .track span, .track em{ transition: width .4s ease; }
+}
+
+/* ---------- app: login, conta, sincronização ---------- */
+.login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+.login-card { width: min(380px, 100%); display: grid; gap: 18px; text-align: center; }
+.login-card h1 { font-size: 44px; font-weight: 800; }
+.login-card h1 span { color: var(--accent); }
+.login-card p { margin: 0; color: var(--muted); }
+.gbtn { justify-content: center; padding: 12px 16px; font-size: 15px; }
+.gbtn svg { width: 18px; height: 18px; }
+.login-err { color: var(--danger); font-size: 13px; }
+.top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.acct { position: relative; }
+.acct-btn { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 12px 4px 4px; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; max-width: 220px; }
+.acct-btn:hover { border-color: var(--muted); }
+.acct-av { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-family: var(--f-display); font-weight: 800; flex: none; }
+.acct-btn #acctName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 15; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 6px; min-width: 210px; display: grid; gap: 2px; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
+.menu button { border: 0; background: none; text-align: left; padding: 9px 10px; border-radius: 6px; font-size: 14px; }
+.menu button:hover { background: var(--surface-2); }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+.sync { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.sync::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.sync[data-state="on"]::before { background: var(--ok); }
+.sync[data-state="off"]::before { background: var(--play); }
+.ext-links { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+.ext-links a { color: var(--fg); font-weight: 600; }
+.ext-hint { margin: 0; font-size: 13px; color: var(--muted); }
+.empty .btn { margin-top: 12px; }
+</style>
+<style>
+:root { color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root { color-scheme: dark; } }
+html, body { margin: 0; }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+</style>
+</head>
+<body>
+<div class="login" id="login" hidden>
+  <div class="login-card">
+    <h1>Backlog<span>.</span></h1>
+    <p>Entre com a sua conta Google para ver e sincronizar seus jogos entre o celular e o computador.</p>
+    <button class="btn primary gbtn" id="loginBtn" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.3zM12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22zM6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.4H3.1A10 10 0 0 0 2 12c0 1.6.4 3.1 1.1 4.6L6.4 14zM12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 3.1 7.4L6.4 10c.8-2.3 3-4.1 5.6-4.1z"/></svg>
+      Entrar com Google
+    </button>
+    <span class="login-err" id="loginErr" hidden></span>
+  </div>
+</div>
+
+<div id="appMain" hidden>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Backlog<span>.</span></h1>
+      <p>Sua fila de jogos por plataforma, com os tempos do HowLongToBeat. Toque no status de um jogo para alternar entre fila, jogando e zerado.</p>
+    </div>
+    <div class="top-actions">
+      <span class="sync" id="syncState">conectando</span>
+      <button class="btn primary" id="addBtn" type="button">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v10M3 8h10"/></svg>
+        Adicionar jogo
+      </button>
+      <div class="acct">
+        <button class="acct-btn" id="menuBtn" type="button" aria-haspopup="true"><span class="acct-av" id="acctInitial">?</span><span id="acctName">Conta</span></button>
+        <div class="menu" id="menu" hidden>
+          <button type="button" id="installBtn" hidden>Instalar app</button>
+          <button type="button" id="exportBtn">Exportar backup</button>
+          <button type="button" id="importBtn">Importar backup</button>
+          <hr>
+          <button type="button" id="logoutBtn">Sair</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <section class="score" aria-label="Resumo">
+    <div><span class="label">Na fila</span><span class="big num" id="sQueue">–</span><span class="sub" id="sQueueSub">jogos para começar</span></div>
+    <div class="hot"><span class="label">Jogando agora</span><span class="big num" id="sNow">–</span><span class="sub" id="sNowSub">em andamento</span></div>
+    <div><span class="label">Horas pela frente</span><span class="big num" id="sHours">–</span><span class="sub">tempo estimado, sem os zerados</span></div>
+    <div><span class="label">Zerados</span><span class="big num" id="sDone">–</span><span class="sub" id="sDoneSub">registrados</span></div>
+  </section>
+
+  <div class="split">
+    <section class="panel">
+      <h2>Jogando agora <span class="label" id="nowCount"></span></h2>
+      <div class="now" id="nowList"></div>
+    </section>
+    <section class="panel plat-panel">
+      <h2>Horas por plataforma <span class="label">fila + jogando</span></h2>
+      <div class="pie-wrap"><svg class="pie" id="platPie" viewBox="0 0 200 200" role="img" aria-label="Horas por plataforma"></svg></div>
+      <div class="plat-legend" id="platLegend"></div>
+      <div class="tip" id="tip"></div>
+    </section>
+  </div>
+
+  <section class="hist" id="hist" hidden>
+    <div class="hist-head">
+      <h2>Zerados por ano</h2>
+      <span class="hist-hint">Abra um ano e clique num jogo para editar.</span>
+      <span class="label" id="histTotal"></span>
+    </div>
+    <div class="years-sum" id="histSum"></div>
+    <div class="years" id="years"></div>
+  </section>
+
+  <section class="lib">
+    <div class="lib-head">
+      <h2>Biblioteca</h2>
+      <div class="tools">
+        <div class="seg" id="platSeg" role="group" aria-label="Plataforma"></div>
+        <div class="seg" id="statSeg" role="group" aria-label="Status"></div>
+        <select class="search" id="sortSel" aria-label="Ordenar">
+          <option value="hours-asc">Mais curtos primeiro</option>
+          <option value="hours-desc">Mais longos primeiro</option>
+          <option value="meta">Melhor nota (Metacritic)</option>
+          <option value="name">Nome (A–Z)</option>
+          <option value="recent">Adicionados recentemente</option>
+          <option value="done">Zerados recentemente</option>
+        </select>
+        <input class="search" id="q" type="search" placeholder="Buscar jogo…" aria-label="Buscar jogo">
+      </div>
+    </div>
+    <div class="rows" id="rows"></div>
+  </section>
+</div>
+
+</div>
+
+<input type="file" id="coverInput" accept="image/*" hidden>
+<input type="file" id="importInput" accept="application/json,.json" hidden>
+
+<div class="scrim" id="scrim" hidden>
+  <form class="sheet" id="form" novalidate>
+    <h2 id="formTitle">Adicionar jogo</h2>
+    <div class="field">
+      <label for="fName">Jogo</label>
+      <input id="fName" required autocomplete="off" placeholder="Ex.: Hollow Knight">
+    </div>
+    <div class="grid2">
+      <div class="field">
+        <label for="fPlat">Plataforma</label>
+        <select id="fPlat"></select>
+      </div>
+      <div class="field">
+        <label for="fStatus">Status</label>
+        <select id="fStatus">
+          <option value="backlog">Na fila</option>
+          <option value="jogando">Jogando</option>
+          <option value="zerado">Zerado</option>
+        </select>
+      </div>
+    </div>
+    <div class="field" id="fDoneWrap" hidden>
+      <label for="fDone">Finalizado em</label>
+      <input id="fDone" type="date">
+    </div>
+    <div class="hltb">
+      <span class="label">Consultar tempo e nota</span>
+      <p class="ext-hint">Abra os sites, confira os números e preencha os campos abaixo.</p>
+      <div class="ext-links" id="extLinks" hidden>
+        <a id="hltbLink" href="https://howlongtobeat.com" target="_blank" rel="noopener">HowLongToBeat ↗</a>
+        <a id="mcLink" href="https://www.metacritic.com" target="_blank" rel="noopener">Metacritic ↗</a>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label for="fTime">Tempo (h)</label><input id="fTime" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Ex.: 18"></div>
+      <div class="field"><label for="fMeta">Nota Metacritic</label><input id="fMeta" type="number" min="0" max="100" step="1" inputmode="numeric" placeholder="Ex.: 87"></div>
+    </div>
+    <p id="formErr" class="label" style="color:var(--danger);margin:0" hidden></p>
+    <div class="sheet-foot">
+      <button class="btn" type="button" id="cancelBtn">Cancelar</button>
+      <button class="btn primary" type="submit" id="saveBtn">Salvar</button>
+    </div>
+  </form>
+</div>
+
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+// Configuração do projeto Firebase (pública por design; quem protege os dados são as regras do Firestore).
+const firebaseConfig = {
+  apiKey: "COLE_AQUI",
+  authDomain: "COLE_AQUI.firebaseapp.com",
+  projectId: "COLE_AQUI",
+  storageBucket: "COLE_AQUI.firebasestorage.app",
+  messagingSenderId: "COLE_AQUI",
+  appId: "COLE_AQUI",
+};
+const PLATS = [
+  { id: "PC", label: "PC", short: "PC", color: "var(--pc)" },
+  { id: "PS5", label: "PS5", short: "PS5", color: "var(--ps5)" },
+  { id: "Switch", label: "Switch", short: "SWITCH", color: "var(--switch)" },
+  { id: "Emulador", label: "Emulador", short: "EMU", color: "var(--emu)" },
+  { id: "Outra", label: "Outra", short: "OUT", color: "var(--other)" },
+  { id: "", label: "Sem plataforma", short: "—", color: "var(--muted)" },
+];
+const STATUS = { backlog: "Na fila", jogando: "Jogando", zerado: "Zerado" };
+const NEXT = { backlog: "jogando", jogando: "zerado", zerado: "backlog" };
+const platOf = id => PLATS.find(p => p.id === (id || "")) || PLATS.find(p => p.id === "Outra");
+const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const today = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+const mcVal = v => { const n = Math.round(Number(v)); return v === null || v === "" || v === undefined || !isFinite(n) || n < 0 || n > 100 ? null : n; };
+const mcTag = m => m == null ? `<span class="mc none" aria-hidden="true"></span>` : `<span class="mc ${m >= 75 ? "good" : m >= 50 ? "mid" : "bad"}" title="Metacritic: ${m}">${m}</span>`;
+const fmtD = s => s ? s.slice(8, 10) + "/" + s.slice(5, 7) + "/" + s.slice(0, 4) : "";
+
+let canWrite = true, loaded = false, covers = {};
+let coverTarget = null, coverBusy = null, coverConfirm = null;
+let games = [];
+let filter = { plat: "all", status: "ativos", q: "", sort: "hours-asc" };
+let editingId = null, confirmId = null;
+
+const $ = id => document.getElementById(id);
+const h = v => (v == null || v === "" || isNaN(v)) ? null : Number(v);
+const fmtH = v => v == null ? "—" : (Math.round(v * 10) / 10).toString().replace(".", ",") + "h";
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const mcUrl = name => "https://www.metacritic.com/search/" + encodeURIComponent(name) + "/?category=13";
+const hltbUrl = name => "https://howlongtobeat.com/?q=" + encodeURIComponent(name);
+const slug = s => (s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "jogo") + "-" + Math.random().toString(36).slice(2, 6);
+
+/* ---------- render ---------- */
+function render() {
+  const active = games.filter(g => g.status !== "zerado");
+  const queue = games.filter(g => g.status === "backlog");
+  const now = games.filter(g => g.status === "jogando");
+  const done = games.filter(g => g.status === "zerado");
+  const hoursLeft = active.reduce((s, g) => s + (g.t || 0), 0);
+
+  $("sQueue").textContent = games.length ? queue.length : "–";
+  $("sQueueSub").textContent = queue.length === 1 ? "jogo para começar" : "jogos para começar";
+  $("sNow").textContent = games.length ? now.length : "–";
+  $("sHours").innerHTML = games.length ? Math.round(hoursLeft) + "<small>h</small>" : "–";
+  $("sDone").textContent = games.length ? done.length : "–";
+  const yNow = String(new Date().getFullYear());
+  $("sDoneSub").textContent = done.filter(g => (g.doneAt || "").startsWith(yNow)).length + " em " + yNow;
+  renderHistory(done);
+
+  // jogando agora
+  $("nowCount").textContent = now.length ? now.reduce((s, g) => s + (g.t || 0), 0) + "h somadas" : "";
+  $("nowList").innerHTML = now.length ? now.sort((a, b) => (a.t || 0) - (b.t || 0)).map(g => {
+    const p = platOf(g.platform);
+    const canCover = canWrite;
+    const busy = coverBusy === g.id;
+    let tools = "";
+    if (canCover && !busy) {
+      tools = coverConfirm === g.id
+        ? `<div class="cover-tools confirm-cover"><span>Remover capa?</span><button type="button" data-act="cover-del-yes" data-id="${g.id}">Sim</button><button type="button" data-act="cover-del-no">Não</button></div>`
+        : g.cover
+          ? `<div class="cover-tools"><button type="button" data-act="cover-pick" data-id="${g.id}" title="Trocar capa" aria-label="Trocar capa de ${esc(g.name)}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="3" width="12" height="10" rx="1.5"/><circle cx="6" cy="6.5" r="1.2"/><path d="M14 10.5l-3.5-3.5L4 13"/></svg></button><button type="button" data-act="cover-del" data-id="${g.id}" title="Remover capa" aria-label="Remover capa de ${esc(g.name)}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.5h5.6l.7-8.5"/></svg></button></div>`
+          : "";
+    }
+    const placeholder = `<div class="cover-ph" style="--pc:${p.color}">${busy ? `<span class="cover-msg">Enviando capa…</span>` : canCover ? `<button type="button" class="cover-add" data-act="cover-pick" data-id="${g.id}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3v10M3 8h10"/></svg>Adicionar capa</button>` : `<span class="cover-initial">${esc(g.name.replace(/^the\s+/i, "").charAt(0).toUpperCase())}</span>`}</div>`;
+    const cover = g.cover && !busy
+      ? `<img src="${g.cover}" alt="Capa de ${esc(g.name)}" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false">${placeholder.replace('<div class="cover-ph"', '<div class="cover-ph" hidden')}`
+      : placeholder;
+    return `<div class="now-card">
+      <div class="cover">${cover}<span class="chip" style="background:${p.color}">${p.short}</span>${g.meta != null ? mcTag(g.meta) : ""}${tools}</div>
+      <h3>${esc(g.name)}</h3>
+      <div class="meta"><span class="num">${fmtH(g.t)}</span>
+        <span class="act">${canWrite ? `<button class="mini" data-act="finish" data-id="${g.id}" type="button">Zerei</button>` : ""}</span></div>
+    </div>`;
+  }).join("") : `<div class="empty" style="grid-column:1/-1;padding:18px">Nenhum jogo em andamento. Marque um jogo como <b>Jogando</b> na biblioteca.</div>`;
+
+  // plataformas
+  const byPlat = PLATS.map(p => {
+    const list = active.filter(g => platOf(g.platform).id === p.id);
+    return { ...p, n: list.length, hours: list.reduce((s, g) => s + (g.t || 0), 0) };
+  }).filter(p => p.n);
+  const tot = byPlat.reduce((s, p) => s + p.hours, 0) || 1;
+  const totReal = byPlat.reduce((s, p) => s + p.hours, 0);
+  const cx = 100, cy = 100, R = 92, r0 = 54;
+  const pt = (rad, a) => [cx + rad * Math.sin(a), cy - rad * Math.cos(a)];
+  let a0 = 0, slices = "", labels = "";
+  byPlat.filter(p => p.hours > 0).forEach(p => {
+    const frac = p.hours / tot, a1 = a0 + frac * Math.PI * 2;
+    if (frac >= 0.9999) {
+      slices += `<path d="M${cx} ${cy - R}A${R} ${R} 0 1 1 ${cx - 0.01} ${cy - R}ZM${cx} ${cy - r0}A${r0} ${r0} 0 1 0 ${cx + 0.01} ${cy - r0}Z" fill-rule="evenodd" fill="${p.color}"><title>${p.label}: ${Math.round(p.hours)}h</title></path>`;
+    } else {
+      const big = a1 - a0 > Math.PI ? 1 : 0;
+      const [x1, y1] = pt(R, a0), [x2, y2] = pt(R, a1), [x3, y3] = pt(r0, a1), [x4, y4] = pt(r0, a0);
+      slices += `<path d="M${x1.toFixed(2)} ${y1.toFixed(2)}A${R} ${R} 0 ${big} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}L${x3.toFixed(2)} ${y3.toFixed(2)}A${r0} ${r0} 0 ${big} 0 ${x4.toFixed(2)} ${y4.toFixed(2)}Z" fill="${p.color}"><title>${p.label}: ${Math.round(p.hours)}h (${Math.round(frac * 100)}%)</title></path>`;
+    }
+    if (frac >= 0.07) { const [lx, ly] = pt((R + r0) / 2, (a0 + a1) / 2); labels += `<text class="pct" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="central">${Math.round(frac * 100)}%</text>`; }
+    a0 = a1;
+  });
+  $("platPie").innerHTML = totReal
+    ? `${slices}${labels}<text class="ctr-n" x="${cx}" y="${cy - 4}" text-anchor="middle" dominant-baseline="central">${Math.round(totReal)}h</text><text class="ctr-l" x="${cx}" y="${cy + 22}" text-anchor="middle" dominant-baseline="central">NO TOTAL</text>`
+    : `<circle cx="${cx}" cy="${cy}" r="${(R + r0) / 2}" fill="none" stroke="var(--track)" stroke-width="${R - r0}"/><text class="ctr-l" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central">SEM HORAS</text>`;
+  $("platLegend").innerHTML = byPlat.length ? byPlat.map(p => `<div><i style="background:${p.color}"></i><span>${p.label}</span><span class="num">${p.n} ${p.n === 1 ? "jogo" : "jogos"}</span><b>${Math.round(p.hours)}h</b><span class="pc-share">${totReal ? Math.round(p.hours / totReal * 100) : 0}%</span></div>`).join("") : `<div style="grid-template-columns:1fr;color:var(--muted)">Sem jogos na fila.</div>`;
+  const shortest = queue.filter(g => g.t != null).sort((a, b) => a.t - b.t)[0];
+  $("tip").innerHTML = shortest ? `Mais rápido da fila: <strong>${esc(shortest.name)}</strong> · <span class="num">${fmtH(shortest.t)}</span> no ${esc(platOf(shortest.platform).label)}` : "";
+
+  // filtros
+  const platsPresent = PLATS.filter(p => games.some(g => platOf(g.platform).id === p.id));
+  $("platSeg").innerHTML = [{ id: "all", label: "Todas" }, ...platsPresent].map(p =>
+    `<button type="button" data-plat="${p.id}" aria-pressed="${filter.plat === p.id}">${p.label}</button>`).join("");
+  $("statSeg").innerHTML = [["ativos", "Fila + Jogando"], ["backlog", "Fila"], ["jogando", "Jogando"], ["zerado", "Zerados"], ["all", "Todos"]].map(([k, l]) =>
+    `<button type="button" data-stat="${k}" aria-pressed="${filter.status === k}">${l}</button>`).join("");
+
+  // lista
+  const q = filter.q.trim().toLowerCase();
+  let list = games.filter(g =>
+    (filter.plat === "all" || platOf(g.platform).id === filter.plat) &&
+    (filter.status === "all" || (filter.status === "ativos" ? g.status !== "zerado" : g.status === filter.status)) &&
+    (!q || g.name.toLowerCase().includes(q)));
+  const by = {
+    "hours-asc": (a, b) => (a.t ?? 1e9) - (b.t ?? 1e9) || a.name.localeCompare(b.name),
+    "hours-desc": (a, b) => (b.t ?? -1) - (a.t ?? -1) || a.name.localeCompare(b.name),
+    "name": (a, b) => a.name.localeCompare(b.name, "pt-BR"),
+    "recent": (a, b) => (b.addedAt || 0) - (a.addedAt || 0),
+    "meta": (a, b) => (b.meta ?? -1) - (a.meta ?? -1) || a.name.localeCompare(b.name),
+    "done": (a, b) => (b.doneAt || "").localeCompare(a.doneAt || "") || a.name.localeCompare(b.name),
+  }[filter.sort];
+  list.sort(by);
+  const max = Math.max(1, ...games.map(g => g.t || 0));
+
+  if (!games.length) {
+    $("rows").innerHTML = loaded
+      ? `<div class="empty"><strong>Biblioteca vazia</strong>Importe o backup com os seus jogos ou use “Adicionar jogo” para cadastrar o primeiro.<br><button class="btn primary" type="button" data-act="import">Importar backup</button></div>`
+      : `<div class="empty"><strong>Carregando sua biblioteca…</strong></div>`;
+    return;
+  }
+  if (!list.length) { $("rows").innerHTML = `<div class="empty"><strong>Nada por aqui</strong>Nenhum jogo combina com esse filtro.</div>`; return; }
+
+  $("rows").innerHTML = list.map(g => {
+    const p = platOf(g.platform);
+    const sub = [g.status === "zerado" && g.doneAt ? `Finalizado em ${fmtD(g.doneAt)}` : ""].filter(Boolean).join(" · ");
+    const color = g.status === "zerado" ? "var(--ok)" : g.status === "jogando" ? "var(--play)" : p.color;
+    const actions = confirmId === g.id
+      ? `<div class="confirm">Excluir? <button class="mini del" type="button" data-act="del-yes" data-id="${g.id}">Sim</button><button class="mini" type="button" data-act="del-no">Não</button></div>`
+      : `<div class="acts">
+          <a class="ico" href="${hltbUrl(g.name)}" target="_blank" rel="noopener" title="Abrir no HowLongToBeat" aria-label="Abrir ${esc(g.name)} no HowLongToBeat"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></a>
+          ${canWrite ? `<button class="ico" type="button" data-act="edit" data-id="${g.id}" title="Editar" aria-label="Editar ${esc(g.name)}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10.5 2.5l3 3L6 13H3v-3z"/></svg></button>
+          <button class="ico" type="button" data-act="del" data-id="${g.id}" title="Excluir" aria-label="Excluir ${esc(g.name)}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.5h5.6l.7-8.5"/></svg></button>` : ""}
+        </div>`;
+    return `<div class="row ${g.status === "zerado" ? "done" : ""}">
+      <span class="chip" style="background:${p.color}">${p.short}</span>
+      ${mcTag(g.meta)}
+      <div class="name">${esc(g.name)}${sub ? `<small class="num">${sub}</small>` : ""}</div>
+      <div class="hours"><div class="track"><span style="width:${((g.t || 0) / max * 100).toFixed(1)}%;background:${color}"></span></div><span class="num">${fmtH(g.t)}</span></div>
+      <div class="stcell"><button class="status ${g.status}" type="button" data-act="cycle" data-id="${g.id}" ${canWrite ? "" : "disabled"} title="${canWrite ? "Clique para mudar o status" : ""}">${STATUS[g.status] || "Na fila"}</button></div>
+      ${actions}
+    </div>`;
+  }).join("");
+}
+
+/* ---------- histórico ---------- */
+const openYears = new Set([String(new Date().getFullYear())]);
+function renderHistory(done) {
+  $("hist").hidden = !done.length;
+  if (!done.length) return;
+  const groups = {};
+  done.forEach(g => { const y = g.doneAt ? g.doneAt.slice(0, 4) : "Sem data"; (groups[y] ||= []).push(g); });
+  const years = Object.keys(groups).sort((a, b) => a === "Sem data" ? 1 : b === "Sem data" ? -1 : b.localeCompare(a));
+  let peak = 1;
+  years.forEach(y => { const c = Array(12).fill(0); groups[y].forEach(g => g.doneAt && c[+g.doneAt.slice(5, 7) - 1]++); groups[y].counts = c; peak = Math.max(peak, ...c); });
+  const dated = years.filter(y => y !== "Sem data");
+  const timed = done.filter(g => g.t != null);
+  const totH = timed.reduce((s, g) => s + g.t, 0);
+  const fmtN = (v, d = 0) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const perYear = dated.length ? totH / dated.length : 0;
+  $("histSum").innerHTML = `
+    <div><span class="label">Tempo total jogado</span><span class="big">${fmtN(Math.round(totH))}<small>horas</small></span><span class="sub">${timed.length} de ${done.length} jogos com tempo</span></div>
+    <div><span class="label">Em dias</span><span class="big">${fmtN(totH / 24, 1)}<small>dias</small></span><span class="sub">contando 24h por dia</span></div>
+    <div><span class="label">Média por ano</span><span class="big">${fmtN(Math.round(perYear))}<small>horas</small></span><span class="sub">${fmtN(perYear / 24, 1)} dias · média de ${fmtN(Math.round(timed.length ? totH / timed.length : 0))}h por jogo</span></div>`;
+  $("histTotal").textContent = `${done.length} jogos${dated.length ? " · média de " + Math.round(done.length / dated.length) + " por ano" : ""}`;
+  const head = `<div class="mhead ygrid"><span></span><span></span><div class="months">${MESES.map(m => `<span>${m[0]}</span>`).join("")}</div><span></span></div>`;
+  $("years").innerHTML = head + years.map(y => {
+    const list = groups[y].slice().sort((a, b) => (b.doneAt || "").localeCompare(a.doneAt || "") || a.name.localeCompare(b.name));
+    const hrs = list.reduce((s, g) => s + (g.t || 0), 0);
+    const cells = groups[y].counts.map((c, i) => { const pct = Math.round(18 + 70 * c / peak); return `<span title="${MESES[i]} ${y}: ${c} ${c === 1 ? "jogo" : "jogos"}" style="background:${c ? `color-mix(in srgb, var(--ok) ${pct}%, var(--track))` : "var(--track)"}${c && pct > 55 ? ";color:var(--surface)" : ""}">${c || ""}</span>`; }).join("");
+    let lastM = null;
+    const items = list.map(g => {
+      const m = g.doneAt ? +g.doneAt.slice(5, 7) - 1 : -1;
+      const mh = m !== lastM && m >= 0 ? `<li class="mh"><span>${["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"][m]}</span><b>${groups[y].counts[m]} ${groups[y].counts[m] === 1 ? "jogo" : "jogos"}</b></li>` : "";
+      lastM = m;
+      const p = platOf(g.platform);
+      return `${mh}<li><span class="num">${g.doneAt ? g.doneAt.slice(8, 10) + "/" + g.doneAt.slice(5, 7) : "—"}</span><span class="chip" style="background:${p.color}">${p.short}</span>${mcTag(g.meta)}${canWrite ? `<button class="dname" type="button" data-act="edit" data-id="${g.id}" title="Editar ${esc(g.name)}"><span>${esc(g.name)}</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10.5 2.5l3 3L6 13H3v-3z"/></svg></button>` : `<span>${esc(g.name)}</span>`}</li>`;
+    }).join("");
+    return `<details class="year" data-year="${y}" ${openYears.has(y) ? "open" : ""}>
+      <summary class="ygrid"><span class="yr num">${y === "Sem data" ? "—" : y}</span><span class="ycnt"><b>${list.length}</b> ${list.length === 1 ? "jogo" : "jogos"}${hrs ? `<br>${Math.round(hrs)}h · ${(hrs / 24).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}d` : ""}</span><div class="months">${y === "Sem data" ? "" : cells}</div><span class="chev"></span></summary>
+      <ol class="done-list">${items}</ol>
+    </details>`;
+  }).join("");
+}
+$("years").addEventListener("toggle", e => {
+  const d = e.target.closest?.("details"); if (!d) return;
+  d.open ? openYears.add(d.dataset.year) : openYears.delete(d.dataset.year);
+}, true);
+
+/* ---------- interações ---------- */
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-plat],[data-stat],[data-act]");
+  if (!t) return;
+  if (t.dataset.plat) { filter.plat = t.dataset.plat; return render(); }
+  if (t.dataset.stat) { filter.status = t.dataset.stat; return render(); }
+  const id = t.dataset.id, g = games.find(x => x.id === id), act = t.dataset.act;
+  if (act === "cycle" && g) { const nx = NEXT[g.status] || "jogando"; return save(id, { status: nx, doneAt: nx === "zerado" ? today() : null }); }
+  if (act === "finish" && g) return save(id, { status: "zerado", doneAt: today() });
+  if (act === "cover-pick" && g) { coverTarget = id; $("coverInput").value = ""; $("coverInput").click(); return; }
+  if (act === "cover-del") { coverConfirm = id; return render(); }
+  if (act === "cover-del-no") { coverConfirm = null; return render(); }
+  if (act === "cover-del-yes" && g) {
+    coverConfirm = null; render();
+    try { await deleteDoc(coverRef(id)); } catch (err) { writeErr(err); }
+    return;
+  }
+  if (act === "edit" && g) return openForm(g);
+  if (act === "del") { confirmId = id; return render(); }
+  if (act === "del-no") { confirmId = null; return render(); }
+  if (act === "del-yes") {
+    confirmId = null; render();
+    try { await deleteDoc(gameRef(id)); if (covers[id]) await deleteDoc(coverRef(id)); }
+    catch (err) { writeErr(err); }
+  }
+});
+$("q").addEventListener("input", e => { filter.q = e.target.value; render(); });
+$("sortSel").addEventListener("change", e => { filter.sort = e.target.value; render(); });
+
+async function save(id, patch) {
+  try { await updateDoc(gameRef(id), patch); } catch (err) { writeErr(err); }
+}
+function writeErr(err) {
+  console.error(err);
+  showBanner(err?.code === "permission-denied"
+    ? "Sem permissão para salvar. Confira se as regras do Firestore foram publicadas."
+    : "Não foi possível salvar agora. Tente de novo em instantes.");
+}
+function showBanner(msg) { const b = $("banner"); b.textContent = msg; b.hidden = !msg; }
+
+/* ---------- capas ---------- */
+async function coverDataUrl(file) {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, 420 / bmp.width);
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  let q = 0.82, url = c.toDataURL("image/webp", q);
+  while (url.length > 300000 && q > 0.4) { q -= 0.12; url = c.toDataURL("image/webp", q); }
+  if (!url.startsWith("data:image/webp")) url = c.toDataURL("image/jpeg", 0.8);
+  return url;
+}
+$("coverInput").addEventListener("change", async e => {
+  const file = e.target.files && e.target.files[0];
+  const id = coverTarget; coverTarget = null;
+  if (!file || !id || !uid) return;
+  if (!/^image\//.test(file.type)) { showBanner("Escolha um arquivo de imagem para a capa."); return; }
+  coverBusy = id; render();
+  try {
+    const data = await coverDataUrl(file);
+    await setDoc(coverRef(id), { data, updatedAt: Date.now() });
+    showBanner("");
+  } catch (err) {
+    if (err?.code) writeErr(err); else showBanner("Não deu para ler essa imagem. Tente outra.");
+  } finally { coverBusy = null; render(); }
+});
+
+/* ---------- formulário ---------- */
+$("fPlat").innerHTML = PLATS.map(p => `<option value="${p.id}">${p.label}</option>`).join("");
+function openForm(g) {
+  editingId = g ? g.id : null;
+  $("formTitle").textContent = g ? "Editar jogo" : "Adicionar jogo";
+  $("fName").value = g ? g.name : "";
+  $("fPlat").value = g ? platOf(g.platform).id : (filter.plat !== "all" ? filter.plat : "PC");
+  $("fStatus").value = g ? g.status : "backlog";
+  $("fDone").value = g?.doneAt || "";
+  $("fDoneWrap").hidden = $("fStatus").value !== "zerado";
+  $("fTime").value = g?.t ?? "";
+  $("fMeta").value = g?.meta ?? "";
+  updateLinks();
+  $("formErr").hidden = true;
+  $("scrim").hidden = false;
+  setTimeout(() => $("fName").focus(), 30);
+}
+function closeForm() { $("scrim").hidden = true; editingId = null; }
+function updateLinks() {
+  const n = $("fName").value.trim();
+  $("extLinks").hidden = !n;
+  $("hltbLink").href = hltbUrl(n);
+  $("mcLink").href = mcUrl(n);
+}
+$("addBtn").addEventListener("click", () => openForm(null));
+$("cancelBtn").addEventListener("click", closeForm);
+$("scrim").addEventListener("click", e => { if (e.target === $("scrim")) closeForm(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("scrim").hidden) closeForm(); });
+$("fStatus").addEventListener("change", () => {
+  const z = $("fStatus").value === "zerado";
+  $("fDoneWrap").hidden = !z;
+  if (z && !$("fDone").value) $("fDone").value = today();
+});
+$("fName").addEventListener("input", updateLinks);
+
+$("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("fName").value.trim();
+  if (!name) { $("formErr").textContent = "Dê um nome ao jogo."; $("formErr").hidden = false; return; }
+  const data = { name, platform: $("fPlat").value, status: $("fStatus").value, time: h($("fTime").value), meta: mcVal($("fMeta").value) };
+  data.doneAt = data.status === "zerado" ? ($("fDone").value || today()) : null;
+  $("saveBtn").disabled = true;
+  try {
+    // Sem await na escrita: offline ela entra na fila local e sincroniza depois.
+    const p = editingId ? updateDoc(gameRef(editingId), data) : setDoc(gameRef(slug(name)), { ...data, addedAt: Date.now() });
+    p.catch(writeErr);
+    closeForm();
+  } finally { $("saveBtn").disabled = false; }
+});
+
+/* ---------- conta, backup ---------- */
+$("menuBtn").addEventListener("click", () => { $("menu").hidden = !$("menu").hidden; });
+document.addEventListener("click", e => { if (!e.target.closest(".acct")) $("menu").hidden = true; });
+$("logoutBtn").addEventListener("click", () => signOut(auth));
+$("exportBtn").addEventListener("click", () => {
+  const out = { app: "backlog-jogos", version: 1, exportedAt: today(), games: games.map(g => {
+    const o = { id: g.id, name: g.name, platform: g.platform, status: g.status, time: g.t, meta: g.meta, doneAt: g.doneAt, addedAt: g.addedAt };
+    if (covers[g.id]) o.cover = covers[g.id];
+    return o;
+  }) };
+  const blob = new Blob([JSON.stringify(out)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = `backlog-jogos-${today()}.json`;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  $("menu").hidden = true;
+});
+const pickImport = () => { $("menu").hidden = true; $("importInput").value = ""; $("importInput").click(); };
+$("importBtn").addEventListener("click", pickImport);
+document.addEventListener("click", e => { if (e.target.closest('[data-act="import"]')) pickImport(); });
+$("importInput").addEventListener("change", async e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file || !uid) return;
+  let list;
+  try {
+    const j = JSON.parse(await file.text());
+    list = Array.isArray(j) ? j : j.games;
+    if (!Array.isArray(list)) throw 0;
+  } catch { showBanner("Esse arquivo não é um backup válido do Backlog."); return; }
+  showBanner(`Importando ${list.length} jogos…`);
+  try {
+    let batch = writeBatch(fs), n = 0, done = 0;
+    const flush = async () => { await batch.commit(); batch = writeBatch(fs); n = 0; };
+    for (const r of list) {
+      if (!r || !r.name) continue;
+      const id = String(r.id || slug(String(r.name))).replace(/\//g, "-").slice(0, 120);
+      batch.set(gameRef(id), {
+        name: String(r.name), platform: typeof r.platform === "string" ? r.platform : "",
+        status: STATUS[r.status] ? r.status : "backlog", time: h(r.time ?? r.extra ?? r.main),
+        meta: mcVal(r.meta), doneAt: typeof r.doneAt === "string" ? r.doneAt : null, addedAt: Number(r.addedAt) || Date.now(),
+      });
+      n++;
+      if (typeof r.cover === "string" && r.cover.startsWith("data:image/")) { batch.set(coverRef(id), { data: r.cover, updatedAt: Date.now() }); n++; }
+      done++;
+      if (n >= 400) await flush();
+    }
+    if (n) await flush();
+    showBanner(`${done} jogos importados.`);
+    setTimeout(() => showBanner(""), 4000);
+  } catch (err) { writeErr(err); }
+});
+
+/* ---------- login e sincronização ---------- */
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const fs = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+let uid = null, unsubs = [];
+const gameRef = id => doc(fs, "users", uid, "games", id);
+const coverRef = id => doc(fs, "users", uid, "covers", id);
+
+$("loginBtn").addEventListener("click", async () => {
+  $("loginErr").hidden = true;
+  const provider = new GoogleAuthProvider();
+  try { await signInWithPopup(auth, provider); }
+  catch (err) {
+    if (["auth/popup-blocked", "auth/operation-not-supported-in-this-environment", "auth/cancelled-popup-request"].includes(err?.code)) {
+      try { await signInWithRedirect(auth, provider); return; } catch (e2) { err = e2; }
+    }
+    if (err?.code === "auth/popup-closed-by-user") return;
+    $("loginErr").textContent = err?.code === "auth/unauthorized-domain"
+      ? "Este endereço ainda não está autorizado no Firebase (Authentication → Configurações → Domínios autorizados)."
+      : "Não foi possível entrar agora. Tente de novo.";
+    $("loginErr").hidden = false;
+  }
+});
+getRedirectResult(auth).catch(() => {});
+
+onAuthStateChanged(auth, user => {
+  unsubs.forEach(u => u()); unsubs = [];
+  games = []; covers = {}; loaded = false;
+  uid = user ? user.uid : null;
+  $("login").hidden = !!user;
+  $("appMain").hidden = !user;
+  if (!user) return;
+  $("acctName").textContent = user.displayName || user.email || "Conta";
+  $("acctInitial").textContent = (user.displayName || user.email || "?").trim().charAt(0).toUpperCase();
+  render();
+  let rawGames = [];
+  const merge = () => { games = rawGames.map(g => ({ ...g, cover: covers[g.id] || null })); render(); };
+  unsubs.push(onSnapshot(collection(fs, "users", uid, "games"), snap => {
+    rawGames = snap.docs.map(d => {
+      const x = d.data() || {};
+      return { id: d.id, name: String(x.name || "Sem nome"), platform: typeof x.platform === "string" ? x.platform : "",
+        status: STATUS[x.status] ? x.status : "backlog", t: h(x.time), meta: mcVal(x.meta), addedAt: Number(x.addedAt) || 0,
+        doneAt: typeof x.doneAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.doneAt) ? x.doneAt : null };
+    });
+    loaded = true;
+    $("syncState").textContent = snap.metadata.fromCache ? "offline" : "sincronizado";
+    $("syncState").dataset.state = snap.metadata.fromCache ? "off" : "on";
+    merge();
+  }, err => { console.error(err); showBanner(err?.code === "permission-denied" ? "Sem permissão para ler os jogos. Confira as regras do Firestore." : "A sincronização parou. Recarregue o app."); }));
+  unsubs.push(onSnapshot(collection(fs, "users", uid, "covers"), snap => {
+    covers = {}; snap.docs.forEach(d => { const v = d.data()?.data; if (typeof v === "string" && v.startsWith("data:image/")) covers[d.id] = v; });
+    merge();
+  }, () => {}));
+});
+
+/* ---------- PWA ---------- */
+if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+let installEvt = null;
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("installBtn").hidden = false; });
+$("installBtn").addEventListener("click", async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice; installEvt = null; $("installBtn").hidden = true; $("menu").hidden = true; });
+render();
+</script>
+</body>
+</html>
